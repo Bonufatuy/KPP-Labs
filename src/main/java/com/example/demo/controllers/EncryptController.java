@@ -1,16 +1,28 @@
 package com.example.demo.controllers;
 
 import com.example.demo.counter.MetricCounter;
+import com.example.demo.excel.ExcelBuilder;
 import com.example.demo.exceptions.BadRequestException;
 import com.example.demo.exceptions.InternalServerException;
 import com.example.demo.memory.Cache;
 import com.example.demo.memory.Parameters;
 import com.example.demo.models.Encrypt;
+import com.example.demo.models.Representation;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.function.ServerRequest;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -20,10 +32,12 @@ public class EncryptController {
     private static final Logger logger = LogManager.getLogger(EncryptController.class);
     private final MetricCounter metricCounter;
     private final Cache cache;
+    private ExcelBuilder excelBuilder;
 
-    public EncryptController(MetricCounter metricCounter, Cache cache) {
+    public EncryptController(MetricCounter metricCounter, Cache cache, ExcelBuilder excelBuilder) {
         this.metricCounter = metricCounter;
         this.cache = cache;
+        this.excelBuilder = excelBuilder;
     }
 
     @GetMapping("/counter")
@@ -32,8 +46,8 @@ public class EncryptController {
     }
 
     @GetMapping("/encrypt")
-    public List<Encrypt> encrypt(@RequestParam(value = "first", defaultValue = "0") List<String> first,
-                                 @RequestParam(value = "second", defaultValue = "0") List<String> second) {
+    public Representation encrypt(@RequestParam(value = "first", defaultValue = "0") List<String> first,
+                                  @RequestParam(value = "second", defaultValue = "0") List<String> second) {
 
         metricCounter.incrementCounter();
 
@@ -93,26 +107,44 @@ public class EncryptController {
                 .entrySet().stream().max(Map.Entry.comparingByValue())
                 .map(Map.Entry::getKey).orElse("Not defined");
 
-        System.out.printf("%s", popularEncrypt);
-        System.out.printf("%s", popularDecoding);
+        Collection<Encrypt> encryptCollection = cache.getCollection();
+        excelBuilder.buildExcel(encryptCollection);
 
-        return ResultList;
+        return new Representation(ResultList, popularEncrypt, popularDecoding);
     }
 
-    @PostMapping(path = "/encrypts", consumes = "application/json", produces = "application/json")
-    public int postCalendars(@RequestBody List<Encrypt> encrypts) {
+    @PostMapping(path = "/post_encrypt", consumes = "application/json", produces = "application/json")
+    public Representation postEncrypt(@RequestBody List<Encrypt> encrypts) {
+
+        metricCounter.incrementCounter();
+
+        if (encrypts.size() == 0) {
+            logger.info("List empty!");
+            throw new BadRequestException();
+        }
+
         List<Encrypt> myList = encrypts
                 .stream()
                 .parallel()
                 .filter(encrypt ->
                         encrypt.getFirstString().length() <= 10 &&
                                 encrypt.getSecondString().length() <= 10)
-                .peek(Encrypt::Encryption).collect(Collectors.toList());
+                .peek(Encrypt::Encryption)
+                .peek(Encrypt::Decoding)
+                .collect(Collectors.toList());
 
-        int inputCount = encrypts.size();
+        String popularEncrypt = encrypts
+                .stream()
+                .collect(Collectors.groupingBy(Encrypt::getFirstString, Collectors.counting()))
+                .entrySet().stream().max(Map.Entry.comparingByValue())
+                .map(Map.Entry::getKey).orElse("Not defined");
 
-        System.out.printf("%d%d", inputCount);
-        metricCounter.incrementCounter();
-        return 5;
+        String popularDecoding = myList
+                .stream()
+                .collect(Collectors.groupingBy(Encrypt::getSecondString, Collectors.counting()))
+                .entrySet().stream().max(Map.Entry.comparingByValue())
+                .map(Map.Entry::getKey).orElse("Not defined");
+
+        return new Representation(myList, popularEncrypt, popularDecoding);
     }
 }

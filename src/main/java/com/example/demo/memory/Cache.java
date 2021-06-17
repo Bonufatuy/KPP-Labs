@@ -3,6 +3,7 @@ package com.example.demo.memory;
 import com.example.demo.models.Encrypt;
 import org.springframework.stereotype.Component;
 
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -20,5 +21,9 @@ public class Cache {
 
     public void addEncrypt(Parameters parameters, Encrypt encrypt) {
         EncryptHashMap.put(parameters, encrypt);
+    }
+
+    public Collection<Encrypt> getCollection() {
+        return EncryptHashMap.values();
     }
 }

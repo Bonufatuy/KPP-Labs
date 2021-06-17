@@ -43,4 +43,12 @@ public class Encrypt {
     public String getSecondString() {
         return second;
     }
+
+    public void setFirst(String first) {
+        this.first = first;
+    }
+
+    public void setSecond(String second) {
+        this.second = second;
+    }
 }
